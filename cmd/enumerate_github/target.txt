@@ -1,0 +1,6 @@
+angular
+kubernetes
+linux
+fastjson
+runc
+qemu

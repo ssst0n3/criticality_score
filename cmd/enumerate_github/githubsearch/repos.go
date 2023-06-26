@@ -124,6 +124,7 @@ func (re *Searcher) ReposByStars(baseQuery string, minStars, overlap int, emitte
 
 	for {
 		q := buildQuery(baseQuery, minStars, maxStars)
+		fmt.Println("q: ", q)
 		c, err := re.runRepoQuery(q)
 		if err != nil {
 			return err
@@ -142,10 +143,12 @@ func (re *Searcher) ReposByStars(baseQuery string, minStars, overlap int, emitte
 			repo := obj.(repo)
 			seen++
 			stars = repo.StargazerCount
+			fmt.Println(repo.URL)
 			if _, ok := repos[repo.URL]; !ok {
 				repos[repo.URL] = empty{}
 				emitter(repo.URL)
 			}
+			break
 		}
 		remaining := total - seen
 		re.logger.With(
@@ -175,5 +178,12 @@ func (re *Searcher) ReposByStars(baseQuery string, minStars, overlap int, emitte
 			).Error("Too many repositories for current range")
 			return ErrorUnableToListAllResult
 		}
+		return nil
 	}
 }
+
+//func (re *Searcher) ReposByStars(baseQuery string, minStars, overlap int, emitter func(string)) (err error) {
+//	q := baseQuery + "sort:stars"
+//
+//	return
+//}

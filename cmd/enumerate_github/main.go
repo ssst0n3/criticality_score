@@ -130,11 +130,13 @@ func init() {
 
 // searchWorker waits for a query on the queries channel, starts a search with that query using s
 // and returns each repository on the results channel.
-func searchWorker(s *githubsearch.Searcher, logger *zap.Logger, queries, results chan string) {
-	for q := range queries {
+func searchWorker(s *githubsearch.Searcher, logger *zap.Logger, queries, results chan []string) {
+	for qu := range queries {
+		packageName := qu[0]
+		q := qu[1]
 		total := 0
 		err := s.ReposByStars(q, *minStarsFlag, *starOverlapFlag, func(repo string) {
-			results <- repo
+			results <- []string{packageName, repo}
 			total++
 		})
 		if err != nil {
@@ -182,22 +184,22 @@ func main() {
 	innerLogger := zapr.NewLogger(logger)
 	scLogger := &sclog.Logger{Logger: &innerLogger}
 
-	// Warn if the -start date is before the epoch.
-	if startDateFlag.Time().Before(epochDate) {
-		logger.With(
-			zap.String("start", startDateFlag.String()),
-			zap.String("epoch", epochDate.Format(githubDateFormat)),
-		).Warn("-start date is before epoch")
-	}
-
-	// Ensure -start is before -end
-	if endDateFlag.Time().Before(startDateFlag.Time()) {
-		logger.With(
-			zap.String("start", startDateFlag.String()),
-			zap.String("end", endDateFlag.String()),
-		).Error("-start date must be before -end date")
-		os.Exit(2)
-	}
+	//// Warn if the -start date is before the epoch.
+	//if startDateFlag.Time().Before(epochDate) {
+	//	logger.With(
+	//		zap.String("start", startDateFlag.String()),
+	//		zap.String("epoch", epochDate.Format(githubDateFormat)),
+	//	).Warn("-start date is before epoch")
+	//}
+	//
+	//// Ensure -start is before -end
+	//if endDateFlag.Time().Before(startDateFlag.Time()) {
+	//	logger.With(
+	//		zap.String("start", startDateFlag.String()),
+	//		zap.String("end", endDateFlag.String()),
+	//	).Error("-start date must be before -end date")
+	//	os.Exit(2)
+	//}
 
 	// We need a context to support a bunch of operations.
 	ctx := context.Background()
@@ -233,8 +235,8 @@ func main() {
 	startTime := time.Now()
 
 	baseQuery := *queryFlag
-	queries := make(chan string)
-	results := make(chan string, (*workersFlag)*reposPerPage)
+	queries := make(chan []string)
+	results := make(chan []string, (*workersFlag)*reposPerPage)
 
 	// Start the worker goroutines to execute the search queries
 	wait := workerpool.WorkerPool(*workersFlag, func(i int) {
@@ -248,18 +250,29 @@ func main() {
 	totalRepos := 0
 	go func() {
 		for repo := range results {
-			w.Write(repo)
+			w.Write(fmt.Sprintf("%s %s", repo[0], repo[1]))
 			totalRepos++
 		}
 		done <- true
 	}()
 
 	// Work happens here. Iterate through the dates from today, until the start date.
-	for created := endDateFlag.Time(); !startDateFlag.Time().After(created); created = created.Add(-oneDay) {
-		logger.With(
-			zap.String("created", created.Format(githubDateFormat)),
-		).Info("Scheduling day for enumeration")
-		queries <- baseQuery + fmt.Sprintf(" created:%s", created.Format(githubDateFormat))
+	//for created := endDateFlag.Time(); !startDateFlag.Time().After(created); created = created.Add(-oneDay) {
+	//	logger.With(
+	//		zap.String("created", created.Format(githubDateFormat)),
+	//	).Info("Scheduling day for enumeration")
+	//	queries <- baseQuery + fmt.Sprintf(" created:%s", created.Format(githubDateFormat))
+	//}
+	content, err := os.ReadFile("target.txt")
+	if err != nil {
+		panic(err)
+	}
+	for _, repoName := range strings.Split(string(content), "\n") {
+		if repoName == "" {
+			continue
+		}
+		q := baseQuery + " " + repoName
+		queries <- []string{repoName, q}
 	}
 	logger.Debug("Waiting for workers to finish")
 	// Indicate to the workers that we're finished.
